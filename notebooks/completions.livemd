@@ -1,11 +1,9 @@
-<!-- livebook:{"app_settings":{"access_type":"public","show_source":true,"slug":"completion"}} -->
-
 # Completions Bot
 
 ```elixir
 Mix.install([
-  {:openai_ex, "~> 0.6.5"},
-  {:kino, "~> 0.12.3"}
+  {:openai_ex, "~> 0.8.3"},
+  {:kino, "~> 0.13.1"}
 ])
 
 alias OpenaiEx
@@ -49,7 +47,7 @@ This function calls the completion API and renders the result in the given Kino 
 completion = fn model, prompt, max_tokens, temperature, last_frame ->
   text =
     openai
-    |> Completion.create(%{
+    |> Completion.create!(%{
       model: model,
       prompt: prompt,
       max_tokens: max_tokens,
@@ -66,13 +64,13 @@ end
 
 ## Streaming Completion
 
-This function calls the streaming completion API and continously updates the Kino frame with the latest tokens
+This function calls the streaming completion API and continuously updates the Kino frame with the latest tokens
 
 ```elixir
 completion_stream = fn model, prompt, max_tokens, temperature, last_frame ->
   stream =
     openai
-    |> Completion.create(
+    |> Completion.create!(
       %{
         model: model,
         prompt: prompt,

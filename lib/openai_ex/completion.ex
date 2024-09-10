@@ -2,6 +2,7 @@ defmodule OpenaiEx.Completion do
   @moduledoc """
   This module provides an implementation of the OpenAI completions API. The API reference can be found at https://platform.openai.com/docs/api-reference/completions.
   """
+  alias OpenaiEx.{Http, HttpSse}
 
   @api_fields [
     :model,
@@ -23,22 +24,14 @@ defmodule OpenaiEx.Completion do
 
   @doc """
   Creates a new completion request with the given arguments.
-
   ## Arguments
-
   - `args`: A list of key-value pairs, or a map, representing the fields of the completion request.
-
   ## Returns
-
   A map containing the fields of the completion request.
-
   The `:model` field is required.
-
   Example usage:
-
       iex> _request = OpenaiEx.Completion.new(model: "davinci")
       %{model: "davinci"}
-
       iex> _request = OpenaiEx.Completion.new(%{model: "davinci"})
       %{model: "davinci"}
   """
@@ -55,30 +48,30 @@ defmodule OpenaiEx.Completion do
 
   @doc """
   Calls the completion 'create' endpoint.
-
   ## Arguments
-
   - `openai`: The OpenAI configuration.
   - `completion`: The completion request, as a map with keys corresponding to the API fields.
-
   ## Returns
-
   A map containing the API response.
-
   See https://platform.openai.com/docs/api-reference/completions/create for more information.
   """
+  def create!(openai = %OpenaiEx{}, completion = %{}, stream: true) do
+    openai |> create(completion, stream: true) |> Http.bang_it!()
+  end
+
   def create(openai = %OpenaiEx{}, completion = %{}, stream: true) do
     ep = Map.get(openai, :_ep_path_mapping).(@ep_url)
 
     openai
-    |> OpenaiEx.HttpSse.post(ep,
-      json: completion |> Map.take(@api_fields) |> Map.put(:stream, true)
-    )
+    |> HttpSse.post(ep, json: completion |> Map.take(@api_fields) |> Map.put(:stream, true))
+  end
+
+  def create!(openai = %OpenaiEx{}, completion = %{}) do
+    openai |> create(completion) |> Http.bang_it!()
   end
 
   def create(openai = %OpenaiEx{}, completion = %{}) do
     ep = Map.get(openai, :_ep_path_mapping).(@ep_url)
-
-    openai |> OpenaiEx.Http.post(ep, json: completion |> Map.take(@api_fields))
+    openai |> Http.post(ep, json: completion |> Map.take(@api_fields))
   end
 end

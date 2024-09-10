@@ -2,17 +2,17 @@
 
 ```elixir
 Mix.install([
-  {:openai_ex, "~> 0.6.5"},
+  {:openai_ex, "~> 0.8.3"},
   # {:openai_ex, path: Path.join(__DIR__, "..")},
-  {:kino, "~> 0.12.3"}
+  {:kino, "~> 0.13.2"}
 ])
 ```
 
 ## Introduction
 
-`OpenaiEx` is an Elixir library that provides a community-maintained OpenAI API client especially for Livebook development.
+`OpenaiEx` is an Elixir library that provides a community-maintained OpenAI API client.
 
-Portions of this project were developed with assistance from ChatGPT 3.5 and 4, as well as Claude 3 Opus. However, every line of code is human curated (by me 😇).
+Portions of this project were developed with assistance from ChatGPT 3.5 and 4, as well as Claude 3 Opus and Claude 3.5 Sonnet. However, every line of code is human curated (by me 😇).
 
 At this point, all API endpoints and features (as of May 1, 2024) are supported, including the **Assistants API Beta 2 with Run streaming**, DALL-E-3, Text-to-Speech, the **tools support** in chat completions, and the **streaming version** of the chat completion endpoint. Streaming request **cancellation** is also supported.
 
@@ -43,7 +43,7 @@ Add the following code to the first connection cell:
 ```elixir
 Mix.install(
   [
-    {:openai_ex, "~> 0.6.5"}
+    {:openai_ex, "~> 0.8.3"}
   ]
 )
 ```
@@ -57,7 +57,7 @@ Add the following to your mix.exs file:
 ```elixir
 def deps do
   [
-    {:openai_ex, "~> 0.6.5"}
+    {:openai_ex, "~> 0.8.3"}
   ]
 end
 ```
@@ -80,11 +80,11 @@ You can also specify an organization if you are a member of more than one:
 
 For more information on authentication, see the [OpenAI API Authentication reference](https://platform.openai.com/docs/api-reference/authentication).
 
-### Configuration
+## Configuration
 
 There are a few places where configuration seemed necessary.
 
-#### Receive Timeout
+### Receive Timeout
 
 The default receive timeout is 15 seconds. If you are seeing longer latencies, you can override the default with
 
@@ -93,7 +93,7 @@ The default receive timeout is 15 seconds. If you are seeing longer latencies, y
 openai = OpenaiEx.new(apikey) |> OpenaiEx.with_receive_timeout(45_000)
 ```
 
-#### Finch Instance
+### Finch Instance
 
 In production scenarios where you want to explicitly tweak the Finch pool, you can create a new Finch instance using
 
@@ -101,7 +101,7 @@ In production scenarios where you want to explicitly tweak the Finch pool, you c
 
 ```elixir
 Finch.start_link(
-    name: MyConfguredFinch,
+    name: MyConfiguredFinch,
     pools: ...
 )
 ```
@@ -116,7 +116,7 @@ openai_with_custom_finch = openai |> with_finch_name(MyConfiguredFinch)
 
 <!-- livebook:{"break_markdown":true} -->
 
-#### Base Url
+### Base Url
 
 There are times, such as when using a local LLM (like Ollama) with an OpenAI proxy, when you need to reset the base url of the API. This is generally only applicable for chat and chat completion endpoints and can be accomplished by
 
@@ -127,7 +127,7 @@ proxy_openai =
   OpenaiEx.new(apikey) |> OpenaiEx.with_base_url("http://host.docker.internal:8000/v1")
 ```
 
-#### Azure OpenAI
+### Azure OpenAI
 
 The Azure OpenAI API replicates the Completion, Chat Completion and Embeddings endpoints from OpenAI.
 
@@ -151,6 +151,49 @@ openai = OpenaiEx.new(entraId) |> OpenaiEx._for_azure(resource_name, deployment_
 
 These methods will be supported as long as the Azure version does not deviate too far from the base OpenAI API.
 
+## Error Handling
+
+OpenaiEx provides robust error handling to support both interactive and non-interactive usage. There are two main ways to handle errors:
+
+### Error Tuples
+
+Most functions in OpenaiEx return `:ok` and `:error` tuples. This allows for pattern matching and explicit error handling:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+case OpenaiEx.Chat.Completions.create(openai, chat_req) do
+  {:ok, response} -> # Handle successful response
+  {:error, error} -> # Handle error
+end
+```
+
+### Exceptions
+
+For scenarios where you prefer exceptions, OpenaiEx provides bang (!) versions of functions that raise exceptions on errors:
+
+<!-- livebook:{"force_markdown":true} -->
+
+```elixir
+try do
+  response = OpenaiEx.Chat.Completions.create!(openai, chat_req)
+  # Handle successful response
+rescue
+  e in OpenaiEx.Error -> # Handle exception
+end
+```
+
+### Error Types
+
+OpenaiEx closely follows the error types defined in the official OpenAI Python library. For a comprehensive list and description of these error types, please refer to the [OpenAI API Error Types documentation](https://platform.openai.com/docs/guides/error-codes/api-errors).
+
+In addition to these standard error types, OpenaiEx defines two specific error types for handling streaming operations:
+
+* `SSETimeoutError`: Raised when a streaming response times out
+* `SSECancellationError`: Raised when a user initiates a stream cancellation
+
+For more details on specific error types and their attributes, refer to the `OpenaiEx.Error` module documentation.
+
 ## Model
 
 ### List Models
@@ -168,7 +211,7 @@ openai |> Models.list()
 To retrieve information about a specific model, use the [`Model.retrieve()`](https://platform.openai.com/docs/api-reference/models/retrieve) function:
 
 ```elixir
-openai |> Models.retrieve("gpt-3.5-turbo")
+openai |> Models.retrieve("gpt-4o-mini")
 ```
 
 For more information on using models, see the [OpenAI API Models reference](https://platform.openai.com/docs/api-reference/models).
@@ -184,7 +227,7 @@ alias OpenaiEx.MsgContent
 
 chat_req =
   Chat.Completions.new(
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     messages: [
       ChatMessage.user(
         "Give me some background on the elixir language. Why was it created? What is it used for? What distinguishes it from other languages? How popular is it?"
@@ -206,21 +249,23 @@ ChatMessage.user(
 You can generate a chat completion using the [`ChatCompletion.create()`](https://platform.openai.com/docs/api-reference/chat/completions/create) function:
 
 ```elixir
-chat_response = openai |> Chat.Completions.create(chat_req)
+{:ok, chat_response} = openai |> Chat.Completions.create(chat_req)
 ```
 
 For a more in-depth example of `ChatCompletion`, check out the [Deeplearning.AI OrderBot Livebook](https://hexdocs.pm/openai_ex/dlai_orderbot.html).
 
 You can also call the endpoint and have it stream the response. This returns the result as a series of tokens, which have to be put together in code.
 
-To use the stream option, call the `ChatCompletion.create()` function with `stream: true`
+To use the stream option, call the `ChatCompletion.create()` function with `stream: true` (and `stream_options` set to `{%include_usage: true}` to recieve usage information)
 
 ```elixir
-chat_stream = openai |> Chat.Completions.create(chat_req, stream: true)
+{:ok, chat_stream} = openai |> Chat.Completions.create(chat_req |> Map.put(:stream_options, %{include_usage: true}), stream: true)
 IO.puts(inspect(chat_stream))
 IO.puts(inspect(chat_stream.task_pid))
 chat_stream.body_stream |> Stream.flat_map(& &1) |> Enum.each(fn x -> IO.puts(inspect(x)) end)
 ```
+
+### Canceling a streaming request
 
 The `chat_stream.task_pid` can be used in conjunction with `OpenaiEx.HttpSse.cancel_request/1` to cancel an ongoing request.
 
@@ -230,10 +275,86 @@ For example
 
 ```elixir
 bad_req = Chat.Completions.new(model: "code-llama", messages: [])
-err_resp = openai |> Chat.Completions.create(bad_req, stream: true)
+{:error, err_resp} = openai |> Chat.Completions.create(bad_req, stream: true)
 ```
 
 For a detailed example of the use of the streaming `ChatCompletion` API, **including how to cancel an ongoing request**, check out [Streaming Orderbot](https://hexdocs.pm/openai_ex/streaming_orderbot.html), the streaming equivalent of the prior example.
+
+### Stream Timeout
+
+While OpenAI's official API implementation typically doesn't require explicit timeout handling for streams, some third-party implementations of the OpenAI API may benefit from custom timeout settings. OpenaiEx provides a way to set a stream-specific timeout to handle these cases.
+
+You can set a stream-specific timeout using the `with_stream_timeout` function:
+
+```elixir
+# Set a stream timeout of 30 seconds
+openai_with_timeout = openai |> OpenaiEx.with_stream_timeout(30_000)
+```
+
+This is particularly useful when working with third-party OpenAI API implementations that may have different performance characteristics than the official API.
+
+### Exception Handling for Streams
+
+When working with streams, it's important to handle potential exceptions that may occur during stream processing. OpenaiEx uses a custom exception type for stream-related errors. Here's how you can handle these exceptions:
+
+```elixir
+alias OpenaiEx.Error
+
+process_stream = fn openai, request ->
+  response = Chat.Completions.create!(openai, request, stream: true)
+  
+  try do
+    response.body_stream
+    |> Stream.flat_map(& &1)
+    |> Enum.each(fn chunk ->
+      # Process each chunk here
+      IO.inspect(chunk)
+    end)
+  rescue
+    e in OpenaiEx.Error ->
+      case e do
+        %{kind: :sse_cancellation} -> 
+          IO.puts("Stream was canceled")
+          {:error, :canceled, e.message}
+        %{kind: :sse_timeout_error} -> 
+          IO.puts("Timeout on SSE stream")
+          {:error, :timeout, e.message}
+        _ -> 
+          IO.puts("Unknown error occurred")
+          {:error, :unknown, e.message}
+      end
+    e ->
+      IO.puts("An unexpected error occurred")
+      {:error, :unexpected, Exception.message(e)}
+  end
+end
+
+# Usage
+chat_req = Chat.Completions.new(
+  model: "gpt-4o-mini",
+  messages: [ChatMessage.user("Tell me a short story about a brave knight")],
+  max_tokens: 500
+)
+
+# Use the OpenaiEx struct with custom stream timeout
+result = process_stream.(openai_with_timeout, chat_req)
+case result do
+  {:error, type, message} ->
+    IO.puts("Error type: #{type}")
+    IO.puts("Error message: #{message}")
+  _ ->
+    IO.puts("Stream processed successfully")
+end
+```
+
+In this example, we define a `process_stream` function that handles different types of stream exceptions:
+
+* `:canceled`: The stream was canceled. We return an error tuple.
+* `:timeout`: The stream timed out. We return an error tuple.
+* Any other `OpenaiEx.Exception`: We treat it as an unknown error.
+* Any other exception: We treat it as an unexpected error.
+
+This approach allows you to gracefully handle different types of stream-related errors and take appropriate actions.
 
 For more information on generating chat completions, see the [OpenAI API Chat Completions reference](https://platform.openai.com/docs/api-reference/chat).
 
@@ -274,7 +395,7 @@ rev_msgs = [
 
 fn_req =
   Chat.Completions.new(
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     messages: rev_msgs |> Enum.reverse(),
     tools: [tool_spec],
     tool_choice: "auto"
@@ -284,7 +405,7 @@ fn_req =
 Next, we call the OpenAI endpoint to get a response that includes the function call.
 
 ```elixir
-fn_response = openai |> Chat.Completions.create(fn_req)
+{:ok, fn_response} = openai |> Chat.Completions.create(fn_req)
 ```
 
 We extract the function call from the response and call the appropriate function with the given parameters. In this example, we define a map of functions that maps function names to their implementations. We then use the function name and arguments from the function call to look up the appropriate function and call it with the given parameters.
@@ -323,11 +444,11 @@ latest_msgs = [ChatMessage.tool(tool_id, fn_name, fn_value) | [fn_message | rev_
 
 fn_req_2 =
   Chat.Completions.new(
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     messages: latest_msgs |> Enum.reverse()
   )
 
-fn_response_2 = openai |> Chat.Completions.create(fn_req_2)
+{:ok, fn_response_2} = openai |> Chat.Completions.create(fn_req_2)
 ```
 
 The final response includes the result of the function call integrated into the conversation.
@@ -347,7 +468,7 @@ img_req = Images.Generate.new(prompt: "An adorable baby sea otter", size: "256x2
 Then call the [`Image.create()`](https://platform.openai.com/docs/api-reference/images/create) function to generate the images.
 
 ```elixir
-img_response = openai |> Images.generate(img_req)
+{:ok, img_response} = openai |> Images.generate(img_req)
 ```
 
 For more information on generating images, see the [OpenAI API Image reference](https://platform.openai.com/docs/api-reference/images).
@@ -408,7 +529,7 @@ img_edit_req =
 We then call the [`Image.create_edit()`]() function
 
 ```elixir
-img_edit_response = openai |> Images.edit(img_edit_req)
+{:ok, img_edit_response} = openai |> Images.edit(img_edit_req)
 ```
 
 and view the result
@@ -433,7 +554,7 @@ Then call the [`Image.create_variation()`](https://platform.openai.com/docs/api-
 ###
 
 ```elixir
-img_var_response = openai |> Images.create_variation(img_var_req)
+{:ok, img_var_response} = openai |> Images.create_variation(img_var_req)
 ```
 
 ```elixir
@@ -460,7 +581,7 @@ emb_req =
 Then call the [`Embedding.create()`]() function.
 
 ```elixir
-emb_response = openai |> Embeddings.create(emb_req)
+{:ok, emb_response} = openai |> Embeddings.create(emb_req)
 ```
 
 For more information on generating embeddings, see the [OpenAI API Embedding reference](https://platform.openai.com/docs/api-reference/embeddings/create)
@@ -490,7 +611,7 @@ speech_req =
 We then call the [`Audio.Speech.create()`](https://platform.openai.com/docs/api-reference/audio/createSpeech) function to create the audio response
 
 ```elixir
-speech_response = openai |> Audio.Speech.create(speech_req)
+{:ok, speech_response} = openai |> Audio.Speech.create(speech_req)
 ```
 
 We can play the response using the `Kino` Audio widget.
@@ -514,13 +635,13 @@ audio_file = OpenaiEx.new_file(name: audio_url, content: fetch_blob.(audio_url))
 The file parameter is used to create the Audio.Transcription request structure
 
 ```elixir
-translation_req = Audio.Transcription.new(file: audio_file, model: "whisper-1")
+transcription_req = Audio.Transcription.new(file: audio_file, model: "whisper-1")
 ```
 
 We then call the [`Audio.Transcription.create()`](https://platform.openai.com/docs/api-reference/audio/createTranscription) function to create a transcription.
 
 ```elixir
-translation_response = openai |> Audio.Transcription.create(translation_req)
+{:ok, transcription_response} = openai |> Audio.Transcription.create(transcription_req)
 ```
 
 ### Create translation
@@ -558,7 +679,7 @@ upload_req = Files.new_upload(file: fine_tune_file, purpose: "fine-tune")
 Then we call the [`File.create()`](https://platform.openai.com/docs/api-reference/files/upload) function to upload the file
 
 ```elixir
-upload_res = openai |> Files.create(upload_req)
+{:ok, upload_res} = openai |> Files.create(upload_req)
 ```
 
 We can verify that the file has been uploaded by calling
@@ -608,7 +729,7 @@ openai |> Files.list()
 To run a fine-tuning job, we minimally need a training file. We will re-run the file creation request above.
 
 ```elixir
-upload_res = openai |> Files.create(upload_req)
+{:ok,  upload_res} = openai |> Files.create(upload_req)
 ```
 
 Next we call `FineTuning.Jobs.new()` to create a new request structure
@@ -622,7 +743,7 @@ ft_req = FineTuning.Jobs.new(model: "davinci-002", training_file: upload_res["id
 To begin the fine tune, we call the [`FineTuning.Jobs.create()`](https://platform.openai.com/docs/api-reference/fine-tunes/create) function
 
 ```elixir
-ft_res = openai |> FineTuning.Jobs.create(ft_req)
+{:ok, ft_res} = openai |> FineTuning.Jobs.create(ft_req)
 ```
 
 We can list all fine tunes by calling [`FineTuning.Jobs.list()`](https://platform.openai.com/docs/api-reference/fine-tunes/list)
@@ -682,7 +803,7 @@ batch_file = OpenaiEx.new_file(name: batch_url, content: fetch_blob.(batch_url))
 
 # batch_file = OpenaiEx.new_file(path: Path.join(__DIR__, "../assets/batch-requests.jsonl"))
 batch_upload_req = Files.new_upload(file: batch_file, purpose: "batch")
-batch_upload_res = openai |> Files.create(batch_upload_req)
+{:ok, batch_upload_res} = openai |> Files.create(batch_upload_req)
 ```
 
 Then, we create the batch request using `Batch.new()` and specify the necessary parameters.
@@ -699,7 +820,7 @@ batch_req =
 Finally, we call the [`Batch.create()`](https://platform.openai.com/docs/api-reference/batch/create) function to create and execute the batch.
 
 ```elixir
-batch = openai |> Batches.create(batch_req)
+{:ok, batch} = openai |> Batches.create(batch_req)
 ```
 
 ### Retrieve batch
@@ -708,16 +829,16 @@ Use the [`Batch.retrieve()`](https://platform.openai.com/docs/api-reference/batc
 
 ```elixir
 batch_id = batch["id"]
-batch_job = openai |> Batches.retrieve(batch_id: batch_id)
+{:ok, batch_job} = openai |> Batches.retrieve(batch_id: batch_id)
 ```
 
 ```elixir
 batch_job_output_file_id = batch_job["output_file_id"]
-batch_job_output_file = openai |> Files.retrieve(batch_job_output_file_id)
+{:ok, batch_job_output_file} = openai |> Files.retrieve(batch_job_output_file_id)
 ```
 
 ```elixir
-batch_result = batch_output_content = openai |> Files.content(batch_job_output_file["id"])
+{status, batch_result} = batch_output_content = openai |> Files.content(batch_job_output_file["id"])
 ```
 
 Note that the string is not valid json (it's a sequence of json objects without the commas or the array '[' ']' delimiters), so it cannot be parsed as such.
@@ -729,7 +850,7 @@ Note that the string is not valid json (it's a sequence of json objects without 
 Use the [`Batch.cancel()`](https://platform.openai.com/docs/api-reference/batch/cancel) function to cancel an in-progress batch.
 
 ```elixir
-cancel_result = openai |> Batches.cancel(batch_id: batch_id)
+{status, cancel_result} = openai |> Batches.cancel(batch_id: batch_id)
 ```
 
 ### List batches
@@ -779,14 +900,14 @@ hr_assistant_req =
       "You are an HR bot, and you have access to files to answer employee questions about company policies.",
     name: "HR Helper",
     tools: [%{type: "file_search"}],
-    model: "gpt-3.5-turbo"
+    model: "gpt-4o-mini"
   )
 ```
 
 Then we call the create function
 
 ```elixir
-asst = openai |> Assistants.create(hr_assistant_req)
+{:ok, asst} = openai |> Assistants.create(hr_assistant_req)
 ```
 
 ### Retrieve Assistant
@@ -817,7 +938,7 @@ hrf_url = "https://raw.githubusercontent.com/restlessronin/openai_ex/main/assets
 hr_file = OpenaiEx.new_file(name: hrf_url, content: fetch_blob.(hrf_url))
 
 hr_upload_req = Files.new_upload(file: hr_file, purpose: "assistants")
-hr_upload_res = openai |> Files.create(hr_upload_req)
+{:ok, hr_upload_res} = openai |> Files.create(hr_upload_req)
 ```
 
 ```elixir
@@ -833,7 +954,7 @@ math_assistant_req =
       "You are a personal math tutor. When asked a question, write and run Python code to answer the question.",
     name: "Math Tutor",
     tools: [%{type: "code_interpreter"}],
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o-mini",
     tool_resources: %{code_interpreter: %{file_ids: [file_id]}}
   )
 ```
@@ -841,7 +962,7 @@ math_assistant_req =
 Finally we call the endpoint to modify the `Assistant`
 
 ```elixir
-asst = openai |> Assistants.update(assistant_id, math_assistant_req)
+{:ok, asst} = openai |> Assistants.update(assistant_id, math_assistant_req)
 ```
 
 ### Delete Assistant
@@ -874,7 +995,7 @@ Use [`VectorStores.create()`](https://platform.openai.com/docs/api-reference/vec
 
 ```elixir
 vector_store_req = VectorStores.new(name: "HR Documents")
-vector_store = openai |> VectorStores.create(vector_store_req)
+{:ok, vector_store} = openai |> VectorStores.create(vector_store_req)
 vector_store_id = vector_store["id"]
 ```
 
@@ -919,14 +1040,14 @@ We can create a vector store file by attaching a file to a vector store using [`
 First we recreate the vector store above
 
 ```elixir
-vector_store = openai |> VectorStores.create(VectorStores.new(name: "HR Documents"))
+{:ok, vector_store} = openai |> VectorStores.create(VectorStores.new(name: "HR Documents"))
 ```
 
 then attach the file id from earlier
 
 ```elixir
 vector_store_id = vector_store["id"]
-vs_file = openai |> VectorStores.Files.create(vector_store_id, file_id)
+{:ok, vs_file} = openai |> VectorStores.Files.create(vector_store_id, file_id)
 ```
 
 ### Retrieve vector store file
@@ -962,7 +1083,7 @@ File batches allow addition of multiple files to a vector store in a single oper
 Use [`VectorStores.File.Batch.create()`](https://platform.openai.com/docs/api-reference/vector-stores-file-batches/createBatch) to attach a list of file ids to a vector store.
 
 ```elixir
-vsf_batch = openai |> VectorStores.File.Batches.create(vector_store_id, [file_id])
+{:ok, vsf_batch} = openai |> VectorStores.File.Batches.create(vector_store_id, [file_id])
 ```
 
 ### Retrieve VS file batch
@@ -1002,7 +1123,7 @@ alias OpenaiEx.Beta.Threads.Messages
 Use the [`Thread.create()`] function to create threads. A thread can be created empty or with messages.
 
 ```elixir
-empty_thread = openai |> Threads.create()
+{:ok, empty_thread} = openai |> Threads.create()
 
 msg_hr =
   Messages.new(
@@ -1015,7 +1136,7 @@ msg_ai = Messages.new(role: "user", content: "How does AI work? Explain it in si
 
 thrd_req = Threads.new(messages: [msg_hr, msg_ai])
 
-thread = openai |> Threads.create(thrd_req)
+{:ok, thread} = openai |> Threads.create(thrd_req)
 ```
 
 ### Retrieve thread
@@ -1058,7 +1179,7 @@ You can create a single message for a thread using [`Message.create()`](https://
 ```elixir
 thread_id = empty_thread["id"]
 
-message = openai |> Threads.Messages.create(thread_id, msg_hr)
+{:ok, message} = openai |> Threads.Messages.create(thread_id, msg_hr)
 ```
 
 ### Retrieve message
@@ -1080,7 +1201,7 @@ metadata = %{modified: "true", user: "abc123"}
 upd_msg_req =
   Threads.Messages.new(thread_id: thread_id, message_id: message_id, metadata: metadata)
 
-message = openai |> Threads.Messages.update(upd_msg_req)
+{:ok, message} = openai |> Threads.Messages.update(upd_msg_req)
 ```
 
 ### List messages
@@ -1102,12 +1223,12 @@ alias OpenaiEx.Beta.Threads.Runs
 A run represents an execution on a thread. Use to [`Run.create()`](https://platform.openai.com/docs/api-reference/runs/createRun) with an assistant on a thread
 
 ```elixir
-math_assistant = openai |> Assistants.create(math_assistant_req)
+{:ok, math_assistant} = openai |> Assistants.create(math_assistant_req)
 math_assistant_id = math_assistant["id"]
 
 run_req = Runs.new(thread_id: thread_id, assistant_id: math_assistant_id)
 
-run = openai |> Runs.create(run_req)
+{:ok, run} = openai |> Runs.create(run_req)
 ```
 
 #### Streaming
@@ -1115,7 +1236,7 @@ run = openai |> Runs.create(run_req)
 It is possible to stream the result of executing a run or resuming a run after submitting tool outputs. To accomplish this, pass `stream: true` to the `create`, `create_thread_and_run` and `submit_tool_outputs` functions.
 
 ```elixir
-run_stream = openai |> Runs.create(run_req, stream: true)
+{:ok, run_stream} = openai |> Runs.create(run_req, stream: true)
 IO.puts(inspect(run_stream))
 IO.puts(inspect(run_stream.task_pid))
 run_stream.body_stream |> Stream.flat_map(& &1) |> Enum.each(fn x -> IO.puts(inspect(x)) end)
@@ -1179,5 +1300,3 @@ Use [`Run.create_and_run()`](https://platform.openai.com/docs/api-reference/runs
 ```elixir
 
 ```
-
-<!-- livebook:{"offset":35676,"stamp":{"token":"XCP.AjHEUsuFzph-vT5k8yFkKDymGuJknmrI8r2JaIelDg8t-OdyitwuhD6xFaBLRqpm3mD7wJET-JC6Rzm3n4c0ZDD4Cyn4cVg8DIRDO7kPdB8ypEPPC6w9zYg","version":2}} -->

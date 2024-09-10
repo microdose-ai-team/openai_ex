@@ -2,6 +2,8 @@ defmodule OpenaiEx.Chat.Completions do
   @moduledoc """
   This module provides an implementation of the OpenAI chat completions API. The API reference can be found at https://platform.openai.com/docs/api-reference/chat/completions.
   """
+  alias OpenaiEx.{Http, HttpSse}
+
   @api_fields [
     :messages,
     :model,
@@ -10,10 +12,13 @@ defmodule OpenaiEx.Chat.Completions do
     :logprobs,
     :max_tokens,
     :n,
+    :parallel_tool_calls,
     :presence_penalty,
     :response_format,
     :seed,
+    :service_tier,
     :stop,
+    :stream_options,
     :temperature,
     :top_p,
     :top_logprobs,
@@ -68,19 +73,23 @@ defmodule OpenaiEx.Chat.Completions do
 
   See https://platform.openai.com/docs/api-reference/chat/completions/create for more information.
   """
+  def create!(openai = %OpenaiEx{}, chat_completion = %{}, stream: true) do
+    openai |> create(chat_completion, stream: true) |> Http.bang_it!()
+  end
+
   def create(openai = %OpenaiEx{}, chat_completion = %{}, stream: true) do
     ep = Map.get(openai, :_ep_path_mapping).(@ep_url)
 
     openai
-    |> OpenaiEx.HttpSse.post(ep,
-      json: chat_completion |> Map.take(@api_fields) |> Map.put(:stream, true)
-    )
+    |> HttpSse.post(ep, json: chat_completion |> Map.take(@api_fields) |> Map.put(:stream, true))
+  end
+
+  def create!(openai = %OpenaiEx{}, chat_completion = %{}) do
+    openai |> create(chat_completion) |> Http.bang_it!()
   end
 
   def create(openai = %OpenaiEx{}, chat_completion = %{}) do
     ep = Map.get(openai, :_ep_path_mapping).(@ep_url)
-
-    openai
-    |> OpenaiEx.Http.post(ep, json: chat_completion |> Map.take(@api_fields))
+    openai |> Http.post(ep, json: chat_completion |> Map.take(@api_fields))
   end
 end

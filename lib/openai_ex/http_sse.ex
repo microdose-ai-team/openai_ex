@@ -1,6 +1,7 @@
 defmodule OpenaiEx.HttpSse do
   @moduledoc false
-  alias OpenaiEx.Http
+  alias OpenaiEx.Http.Finch, as: Client
+  alias OpenaiEx.Error
   require Logger
 
   # based on
@@ -11,16 +12,17 @@ defmodule OpenaiEx.HttpSse do
   def post(openai = %OpenaiEx{}, url, json: json) do
     me = self()
     ref = make_ref()
-    task = Task.async(fn -> post_sse(openai, url, json, me, ref) end)
+    task = Task.async(fn -> finch_stream(openai, url, json, me, ref) end)
     status = receive(do: ({:chunk, {:status, status}, ^ref} -> status))
     headers = receive(do: ({:chunk, {:headers, headers}, ^ref} -> headers))
 
     if status in 200..299 do
-      body_stream = Stream.resource(fn -> {"", ref} end, &next_sse/1, fn _ -> :ok end)
-      %{status: status, headers: headers, body_stream: body_stream, task_pid: task.pid}
+      stream_receiver = create_stream_receiver(ref, openai.stream_timeout, task)
+      body_stream = Stream.resource(&init_stream/0, stream_receiver, &end_stream/1)
+      {:ok, %{status: status, headers: headers, body_stream: body_stream, task_pid: task.pid}}
     else
-      error = extract_error(ref, "")
-      %{status: status, headers: headers, error: Jason.decode!(error)}
+      body = extract_error(ref, "") |> Jason.decode!()
+      {:error, Error.status_error(status, %{status: status, headers: headers, body: body}, body)}
     end
   end
 
@@ -28,15 +30,19 @@ defmodule OpenaiEx.HttpSse do
     send(task_pid, :cancel_request)
   end
 
-  defp post_sse(openai = %OpenaiEx{}, url, json, me, ref) do
-    request = OpenaiEx.Http.build_post(openai, url, json: json)
-    on_chunk = create_chunk_handler(me, ref)
-    options = Http.request_options(openai)
-    request |> Finch.stream(Map.get(openai, :finch_name), nil, on_chunk, options)
-    send(me, {:done, ref})
+  defp finch_stream(openai = %OpenaiEx{}, url, json, me, ref) do
+    request = Client.build_post(openai, url, json: json)
+    send_me_chunk = create_chunk_sender(me, ref)
+
+    try do
+      Client.stream(request, openai, send_me_chunk)
+      send(me, {:done, ref})
+    catch
+      :throw, :cancel_request -> {:exception, :cancel_request}
+    end
   end
 
-  defp create_chunk_handler(me, ref) do
+  defp create_chunk_sender(me, ref) do
     fn chunk, _acc ->
       receive do
         :cancel_request ->
@@ -48,27 +54,40 @@ defmodule OpenaiEx.HttpSse do
     end
   end
 
-  defp next_sse({acc, ref}) do
-    receive do
-      {:chunk, {:data, evt_data}, ^ref} ->
-        {events, next_acc} = extract_events(evt_data, acc)
-        {[events], {next_acc, ref}}
+  defp init_stream, do: ""
 
-      # some 3rd party providers seem to be ending the stream with eof,
-      # rather than 2 line terminators. Hopefully those will be fixed and this
-      # can be removed in the future
-      {:done, ^ref} when acc == "data: [DONE]" ->
-        {:halt, {acc, ref}}
+  defp create_stream_receiver(ref, timeout, task) do
+    fn acc when is_binary(acc) ->
+      receive do
+        {:chunk, {:data, evt_data}, ^ref} ->
+          {events, next_acc} = extract_events(evt_data, acc)
+          {[events], next_acc}
 
-      {:done, ^ref} ->
-        if acc != "", do: Logger.error("Residue!: #{acc}")
-        {:halt, {acc, ref}}
+        # some 3rd party providers seem to be ending the stream with eof,
+        # rather than 2 line terminators. Hopefully those will be fixed and this
+        # can be removed in the future
+        {:done, ^ref} when acc == "data: [DONE]" ->
+          Logger.warning("\"data: [DONE]\" should be followed by 2 line terminators")
+          {:halt, acc}
 
-      {:canceled, ^ref} ->
-        Logger.info("Request canceled by user")
-        {:halt, {acc, ref}}
+        {:done, ^ref} ->
+          {:halt, acc}
+
+        {:canceled, ^ref} ->
+          Logger.info("Request canceled by user")
+          {:halt, {:exception, :canceled}}
+      after
+        timeout ->
+          Logger.warning("Stream timeout after #{timeout}ms")
+          Task.shutdown(task)
+          {:halt, {:exception, :timeout}}
+      end
     end
   end
+
+  defp end_stream({:exception, :timeout}), do: raise(Error.sse_timeout_error())
+  defp end_stream({:exception, :canceled}), do: raise(Error.sse_user_cancellation())
+  defp end_stream(_), do: :ok
 
   @double_eol ~r/(\r?\n|\r){2}/
   @double_eol_eos ~r/(\r?\n|\r){2}$/
@@ -94,11 +113,11 @@ defmodule OpenaiEx.HttpSse do
   defp process_fields(lines) do
     lines
     |> Enum.map(&extract_field/1)
-    |> Enum.filter(&filter_field/1)
-    |> Enum.map(&decode_field/1)
+    |> Enum.filter(&is_data/1)
+    |> Enum.map(&to_json/1)
   end
 
-  defp decode_field(field) do
+  defp to_json(field) do
     case field do
       %{data: data} ->
         %{data: Jason.decode!(data)}
@@ -109,7 +128,7 @@ defmodule OpenaiEx.HttpSse do
     end
   end
 
-  defp filter_field(field) do
+  defp is_data(field) do
     case field do
       %{data: "[DONE]"} -> false
       %{data: _} -> true

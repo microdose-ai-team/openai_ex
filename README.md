@@ -3,9 +3,9 @@
 [![hex.pm badge](https://img.shields.io/hexpm/v/openai_ex.svg)](https://hex.pm/packages/openai_ex)
 ![hex.pm downloads](https://img.shields.io/hexpm/dw/openai_ex)
 
-`OpenaiEx` is an Elixir library that provides a community-maintained OpenAI API client especially for Livebook development.
+`OpenaiEx` is an Elixir library that provides a community-maintained OpenAI API client.
 
-Portions of this project were developed with assistance from ChatGPT 3.5 and 4, as well as Claude 3 Opus. However, every line of code is human curated (by me 😇).
+Portions of this project were developed with assistance from ChatGPT 3.5 and 4, as well as Claude 3 Opus and Claude 3.5 Sonnet. However, every line of code is human curated (by me 😇).
 
 All API endpoints and features (as of May 1, 2024) are supported, including the **Assistants API Beta 2 with Run streaming**, DALL-E-3, Text-To-Speech, the **tools support** in chat completions, and the **streaming version** of the chat completion endpoint. Streaming request **cancellation** is also supported.
 
